@@ -1,6 +1,6 @@
 # whatsapp-audio-transcriber
 
-A WhatsApp Bot to automatically transcribe voice messages using whisper.cpp.
+A Node.js WhatsApp Bot to automatically transcribe voice messages using whisper.cpp.
 
 ## Overview
 
