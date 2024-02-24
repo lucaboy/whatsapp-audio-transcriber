@@ -9,7 +9,7 @@ import { Whisper, manager } from "smart-whisper";
 
 config();
 const port = process.env.PORT || 8080;
-const transcrbeSentVoiceMessages = process.env.TRANSCRIBE_SENT_VOICE_MESSAGES === 'true';
+const transcribeSentVoiceMessages = process.env.TRANSCRIBE_SENT_VOICE_MESSAGES === 'true';
 const useGPU = process.env.USE_GPU === 'true';
 const whisperModel = process.env.WHISPER_MODEL || 'medium';
 const whisperLocalModelPath = process.env.WHISPER_LOCAL_MODEL_PATH;
@@ -56,7 +56,7 @@ client.on('qr', async (qrCodeData) => {
     qrCode = await QRCode.toDataURL(qrCodeData);
 });
 
-client.on(transcrbeSentVoiceMessages ? 'message_create' : 'message', async message => {
+client.on(transcribeSentVoiceMessages ? 'message_create' : 'message', async message => {
     if (whisper && message.type === 'ptt') {
         const audio = await message.downloadMedia();
         const filePathWithoutExtension = `./tmp/audio/${Date.now()}`;
