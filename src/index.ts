@@ -10,12 +10,13 @@ import { Whisper, manager } from "smart-whisper";
 config();
 const port = process.env.PORT || 8080;
 const transcrbeSentVoiceMessages = process.env.TRANSCRIBE_SENT_VOICE_MESSAGES === 'true';
+const useGPU = process.env.USE_GPU === 'true';
 const whisperModel = process.env.WHISPER_MODEL || 'medium';
 const whisperLocalModelPath = process.env.WHISPER_LOCAL_MODEL_PATH;
 const transcriptionLanguage = process.env.TRANSCRIPTION_LANGUAGE || 'auto';
 
 const whisperOptions = {
-    gpu: true
+    gpu: useGPU
 };
 
 var whisper: Whisper;
