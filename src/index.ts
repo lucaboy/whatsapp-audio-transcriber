@@ -74,7 +74,7 @@ client.on(transcribeSentVoiceMessages ? 'message_create' : 'message', async mess
                 const task = await whisper.transcribe(pcm, { language: transcriptionLanguage });
                 const transcription = (await task.result).map((result) => result.text).join(' ');
                 if (transcription) {
-                    message.reply(`[WA-BOT] Trascrizione: ${transcription}`);
+                    message.reply(`[WA-TRANSCRIBER-BOT] ${transcription}`);
                 }
             });
     }
