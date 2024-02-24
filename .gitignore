@@ -35,6 +35,11 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Lock files
+package-lock.json
+yarn.lock
+
+# Local version cache
 .wwebjs_auth/
 .wwebjs_cache/
 tmp/
