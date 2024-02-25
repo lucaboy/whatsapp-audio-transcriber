@@ -4,7 +4,7 @@ A Node.js WhatsApp Bot to automatically transcribe voice messages using whisper.
 
 ## Overview
 
-This project utilizes the following components:
+This project uses:
 
 - [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js): A WhatsApp API client that connects through the WhatsApp Web browser app using [Puppeteer](https://github.com/puppeteer/puppeteer).
 
@@ -12,16 +12,18 @@ This project utilizes the following components:
 
 ## Usage
 
-1. Clone this repository.
+1. Download and install [FFmpeg](https://www.ffmpeg.org/).
 
-2. Download the OpenAI's Whisper model converted to ggml format from [here](https://huggingface.co/ggerganov/whisper.cpp).
+2. Clone this repository, install dependencies and build the application `git clone https://github.com/lucaboy/whatsapp-audio-transcriber.git && cd whatsapp-audio-transcriber && npm install && npm run build`.
 
-3. Rename the `.env.example` file to `.env` and edit it with your configuration (make sure to edit the `WHISPER_LOCAL_MODEL_PATH` parameter with the path of the downloaded Whisper model).
+3. Download the OpenAI's Whisper model converted to ggml format from [here](https://huggingface.co/ggerganov/whisper.cpp).
 
-4. Build and start the application: `npm install && npm run build && npm start`.
+4. Rename the `.env.example` file to `.env` and edit it with your configuration (make sure to edit the `WHISPER_LOCAL_MODEL_PATH` parameter with the path of the downloaded Whisper model).
 
-5. Open the following URL in your browser: http://localhost:8080.
+5. Start the application: `npm start`.
 
-6. Scan the QR code using the WhatsApp mobile app to authenticate.
+6. Open the following URL in your browser: http://localhost:8080.
 
-7. Test the application by sending a voice message and check the transcribed text.
+7. Scan the QR code using the WhatsApp mobile app to authenticate.
+
+8. Test the application by sending a voice message and check the transcribed text.
