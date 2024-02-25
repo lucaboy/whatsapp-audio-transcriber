@@ -36,14 +36,15 @@ var qrCode: string;
 
 const app = express();
 
+// TODO: Use Server-Sent Events (SSE) to update the QR code in real-time
 app.get('/', async (req, res) => {
     const clientState = await client.getState();
-    if (clientState === "CONNECTED") {
-        return res.send('Connected');
+    if (clientState === 'CONNECTED') {
+        return res.send('Connected. You can close this page.');
     }  else if (qrCode) {
         return res.send(`<img src="${qrCode}" />`);
     }
-    res.send(clientState);
+    res.send('Refresh the page until the QR code appears.');
 });
 
 app.listen(port);
