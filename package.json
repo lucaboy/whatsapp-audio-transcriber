@@ -24,6 +24,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "fluent-ffmpeg": "^2.1.2",
+    "moment": "^2.30.1",
     "node-wav": "^0.0.2",
     "qrcode": "^1.5.3",
     "smart-whisper": "^0.7.0",

@@ -26,4 +26,4 @@ This project uses:
 
 7. Scan the QR code using the WhatsApp mobile app to authenticate.
 
-8. Test the application by sending a voice message and check the transcribed text.
+8. Test the application by reacting with "🤖" to a voice message and check the transcribed text.
