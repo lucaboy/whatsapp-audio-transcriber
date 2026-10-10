@@ -1,121 +1,99 @@
-import express from 'express';
-import { config } from 'dotenv';
+import 'dotenv/config';
+import { access } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import WAWebJS, { Client, LocalAuth } from 'whatsapp-web.js';
 import QRCode from 'qrcode';
-import fs from 'fs';
-import ffmpeg from 'fluent-ffmpeg';
-import { decode } from 'node-wav';
-import { Whisper, manager } from "smart-whisper";
-import moment from 'moment';
+import { Whisper, manager } from 'smart-whisper';
+import { createDashboard, DashboardState } from './dashboard';
+import { readSettings } from './settings';
+import { decodeVoiceNote, shouldTranscribe, TranscriptionQueue } from './transcription';
 
-config();
-const port = process.env.PORT || 8080;
-const transcriptionReaction = process.env.TRANSCRIPTION_REACTION || '🤖';
-const useGPU = process.env.USE_GPU === 'true';
-const whisperModel = process.env.WHISPER_MODEL || 'medium';
-const whisperLocalModelPath = process.env.WHISPER_LOCAL_MODEL_PATH;
-const transcriptionLanguage = process.env.TRANSCRIPTION_LANGUAGE || 'auto';
-
-const whisperOptions = {
-    gpu: useGPU
-};
-
-var whisper: Whisper;
-if (whisperLocalModelPath && fs.existsSync(whisperLocalModelPath)) {
-    whisper = new Whisper(whisperLocalModelPath, whisperOptions);
-} else if (manager.check(whisperModel)) {
-    whisper = new Whisper(manager.resolve(whisperModel), whisperOptions);
-} else {
-    manager.download(whisperModel).then(() => {
-        whisper = new Whisper(manager.resolve(whisperModel), whisperOptions);
+async function main() {
+    const settings = readSettings();
+    let state: DashboardState = { status: 'starting' };
+    const app = createDashboard(() => state);
+    const server = app.listen(settings.port, settings.host, () => {
+        console.log(`Open http://${settings.host}:${settings.port} to link WhatsApp.`);
     });
+    server.on('error', (error) => {
+        console.error('Dashboard could not start:', error.message);
+        process.exit(1);
+    });
+
+    const client = new Client({ authStrategy: new LocalAuth() });
+    try {
+        let modelPath = settings.modelPath;
+        if (modelPath) {
+            await access(modelPath, constants.R_OK);
+        } else {
+            if (!manager.check(settings.model)) {
+                console.log(`Downloading Whisper model: ${settings.model}`);
+                await manager.download(settings.model);
+            }
+            modelPath = manager.resolve(settings.model);
+        }
+        const whisper = new Whisper(modelPath, { gpu: settings.gpu });
+        await whisper.load();
+        const queue = new TranscriptionQueue();
+
+        client.on('qr', (value) => {
+            state = { status: 'qr' };
+            void QRCode.toDataURL(value).then(qr => {
+                if (state.status === 'qr') state = { status: 'qr', qr };
+            }).catch(error => console.error('QR generation failed:', error.message));
+        });
+        client.on('authenticated', () => { state = { status: 'authenticated' }; });
+        client.on('ready', () => {
+            state = { status: 'ready' };
+            console.log(`Ready. React to a voice note with ${settings.reaction}.`);
+        });
+        client.on('auth_failure', () => {
+            state = { status: 'error' };
+            console.error('WhatsApp authentication failed. Restart the app to link again.');
+        });
+        client.on('disconnected', () => {
+            state = { status: 'disconnected' };
+            console.log('WhatsApp disconnected. Restart the app to reconnect.');
+        });
+        client.on('message_reaction', reaction => {
+            if (!shouldTranscribe(reaction, settings.reaction)) return;
+            const id = reaction.msgId._serialized;
+            void queue.enqueue(id, async () => {
+                const message = await findMessage(client, id);
+                if (message.type !== 'ptt') return;
+                const media = await message.downloadMedia();
+                if (!media?.data) throw new Error('Voice note is unavailable. Try a recent message.');
+                const pcm = await decodeVoiceNote(media.data, settings.ffmpegPath);
+                const task = await whisper.transcribe(pcm, { language: settings.language });
+                const text = (await task.result).map(segment => segment.text.trim()).filter(Boolean).join(' ');
+                if (text) await message.reply(`[WA-TRANSCRIBER-BOT] ${text}`);
+                else console.log('No speech detected in the voice note.');
+            }).catch(error => console.error('Transcription failed:', error.message));
+        });
+
+        await client.initialize();
+    } catch (error) {
+        state = { status: 'error' };
+        await client.destroy().catch(() => undefined);
+        server.close();
+        throw error;
+    }
 }
 
-fs.mkdirSync('./tmp/audio', { recursive: true });
-
-var qrCode: string;
-
-const app = express();
-
-// TODO: Use Server-Sent Events (SSE) to update the QR code in real-time
-app.get('/', async (req, res) => {
-    return client.getState().then((state) => {
-        if (state === 'CONNECTED') {
-            return res.send('Connected. You can close this page.');
-        }  else if (qrCode) {
-            return res.send(`<img src="${qrCode}" />`);
-        }
-        return res.send('QR code not available yet. Refresh the page.');
-    }).catch((error) => {
-        console.error(error);
-        return res.send('QR code not available yet. Refresh the page.');
-    });
-});
-
-app.listen(port);
-
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        args: [
-            '--no-sandbox'
-        ],
-    },
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html'
-    }
-});
-
-client.on('qr', async (qrCodeData) => {
-    qrCode = await QRCode.toDataURL(qrCodeData);
-});
-
-client.on('message_reaction', async reaction => {
-    if (
-        !reaction.id.fromMe || 
-        reaction.reaction !== transcriptionReaction || 
-        moment.unix(reaction.timestamp).isBefore(moment().subtract(2, 'minutes'))
-    ) {
-        return;
-    }
-
-    var message: WAWebJS.Message | undefined;
-
-    var numberOfTries = 0;
-
-    while (numberOfTries < 30) {
+async function findMessage(client: Client, id: string): Promise<WAWebJS.Message> {
+    for (let attempt = 0; attempt < 5; attempt++) {
         try {
-            message = await client.getMessageById(reaction.msgId._serialized);
-            break;
-        } catch (error) {
-            console.log(error);
-            numberOfTries++;
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            const message = await client.getMessageById(id);
+            if (message) return message;
+        } catch {
+            // WhatsApp may deliver the reaction before the message is available locally.
         }
+        if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 2000));
     }
+    throw new Error('Could not retrieve the voice note after five attempts.');
+}
 
-    if (whisper && message?.type === 'ptt') {
-        const audio = await message.downloadMedia();
-        const filePathWithoutExtension = `./tmp/audio/${Date.now()}`;
-        fs.writeFileSync(`${filePathWithoutExtension}.ogg`, audio.data, 'base64');
-        ffmpeg(`${filePathWithoutExtension}.ogg`)
-            .audioFrequency(16000)
-            .toFormat('wav')
-            .save(`${filePathWithoutExtension}.wav`)
-            .on('end', async () => {
-                const { channelData } = decode(fs.readFileSync(`${filePathWithoutExtension}.wav`));
-                const pcm = channelData[0];
-                fs.unlinkSync(`${filePathWithoutExtension}.ogg`);
-                fs.unlinkSync(`${filePathWithoutExtension}.wav`);
-
-                const task = await whisper.transcribe(pcm, { language: transcriptionLanguage });
-                const transcription = (await task.result).map((result) => result.text).join(' ');
-                if (transcription) {
-                    message!.reply(`[WA-TRANSCRIBER-BOT] ${transcription}`);
-                }
-            });
-    }
+void main().catch(error => {
+    console.error('Startup failed:', error.message);
+    process.exitCode = 1;
 });
-
-client.initialize();

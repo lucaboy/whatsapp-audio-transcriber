@@ -35,8 +35,7 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Lock files
-package-lock.json
+# Other package-manager lock files
 yarn.lock
 
 # Local version cache
